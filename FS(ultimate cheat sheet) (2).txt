@@ -1,0 +1,866 @@
+npm install
+npm init -y
+mongoose
+express
+multer
+body-parser
+path
+bcrypt
+express-session
+cors
+ejs
+npm install nodemon --save-dev
+jsonwebtoken
+dotenv
+
+npm create vite@latest
+npx devextreme-cli new react-app app-name --app-type=vite
+git clone https://github.com/jay-pansuriya66/before_exam_external_practice.git
+git clone https://github.com/jay-pansuriya66/first.git
+
+run node=>  nodemon server.js
+package.json---->
+"scripts": {
+   "dev": "nodemon server.js",
+  },
+  
+  
+react-vite ---> 
+npm create vite@latest
+cd my-react-app 
+npm install
+npm run dev
+
+
+
+------------mongoose schema--------
+
+const mongoose = require('mongoose');
+
+const developerSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: [true, 'Developer name is required'], // Custom error message if missing
+        trim: true, // Automatically remove whitespace from both ends of the string
+        minlength: [2, 'Name must be at least 2 characters long']
+    },
+    
+    email: {
+        type: String,
+        required: [true, 'Email is required'],
+        unique: true, // Ensures no two developers can have the same email
+        lowercase: true, // Converts email to lowercase before saving
+        match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email address'] // Regex for email validation
+    },
+    
+    password: {
+        type: String,
+        required: [true, 'Password is required'],
+        minlength: [6, 'Password must be at least 6 characters long'],
+        select: false // Default setting to not return the password field in queries
+    },
+    
+    dob: {
+        type: Date, // Change to Date type for proper date handling
+        required: [true, 'Date of Birth is required'],
+        // Custom validator to ensure the developer is older than 18
+        validate: {
+            validator: function(v) {
+                return (new Date().getFullYear() - v.getFullYear()) >= 18;
+            },
+            message: 'Developer must be at least 18 years old.'
+        }
+    },
+    
+    city: {
+        type: String,
+        required: true,
+        enum: {
+            values: ['Surat', 'Mumbai', 'Bangalore', 'Delhi'], // Only allows these specific strings
+            message: '{VALUE} is not a supported city'
+        }
+    },
+    
+    image: {
+        type: [String],
+        maxlength: [5, 'Maximum 5 images allowed for profile.'],
+        default: []
+    },
+    
+    degrees: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Degree'
+    }],
+
+    // 8. Timestamps (automatically adds createdAt and updatedAt fields)
+    createdAt: {
+        type: Date,
+        default: Date.now,
+        select: false // Hide from default query results
+    },
+    role: {
+        type: String,
+        default: 'user', // Set a default value
+        enum: ['user', 'admin']
+    }
+});
+
+module.exports = mongoose.model('Developer', developerSchema);
+
+
+---------node-express ------
+
+const mongoose = require('mongoose');
+const express = require('express');
+const multer = require('multer');
+const bodyParser = require('body-parser');
+const path = require('path');
+const bcrypt = require('bcrypt');
+const session = require('express-session');
+const cors = require('cors');
+const Degree = require('./model/Degree');
+const Developer = require('./model/Developer');
+
+const app = express();
+app.use(cors({
+    origin: 'http://localhost:5173',
+    credentials: true
+}));
+app.use(express.urlencoded({
+    extended: true
+}));
+app.use(express.static('public'));
+app.set("view engine", "ejs");
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, './public/uploads');
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
+});
+
+const upload = multer({
+    storage
+});
+
+app.use(session({
+    secret: "eeee2134",
+    resave: false,
+    saveUninitialized: true
+}));
+
+mongoose.connect("mongodb://localhost:27017/before_exam_external_practice")
+    .then(() => console.log("DB connected"))
+    .catch(err => console.log(err));
+
+app.get('/', (req, res) => {
+    res.redirect('/login');
+});
+
+app.get('/register', async (req, res) => {
+    const degrees = await Degree.find();
+    res.render("register", {
+        degrees
+    });
+});
+
+app.post('/register', upload.array('image'), async (req, res) => {
+
+    const imageFiles = req.files.map(file => file.filename);
+    const hashedpassword = await bcrypt.hash(req.body.password, 10);
+    const selectedDegreeNames = Array.isArray(req.body.degrees) ?
+        req.body.degrees :
+        [req.body.degrees];
+
+    const selectedDegrees = await Degree.find({
+        name: {
+            $in: selectedDegreeNames
+        }
+    });
+
+    const degreeIds = selectedDegrees.map(d => d._id);
+
+    const newDeveloper = new Developer({
+        name: req.body.name,
+        email: req.body.email,
+        password: hashedpassword,
+        dob: req.body.dob,
+        city: req.body.city,
+        image: imageFiles,
+        degrees: degreeIds
+    });
+
+    await newDeveloper.save();
+    res.redirect('/login');
+});
+
+app.get('/api/home', async (req, res) => {
+    if (!req.session.userId) {
+        return res.redirect('/login');
+    }
+    const user = await Developer.findById(req.session.userId).populate('degrees');
+    res.json(user);
+    //  res.render('home',{user});
+});
+
+app.get('/login', (req, res) => {
+    res.render('login');
+});
+
+app.post('/login', async (req, res) => {
+
+    const user = await Developer.findOne({
+        email: req.body.email
+    });
+
+    if (!user) {
+        res.status(400).json("Invalid email or password");
+    }
+
+    const match = await bcrypt.compare(req.body.password, user.password);
+
+    if (!match) {
+        res.status(400).json("Invalid email or password");
+    }
+
+    req.session.userId = user._id;
+    return res.redirect('/home');
+});
+
+//advanced search
+app.get('/developer/search', async (req, res) => {
+    const keyword = String(req.query.name || "");
+
+    const result = await Developer.find({
+        name: {
+            $regex: keyword,
+            $options: 'i'
+        }
+    });
+
+    res.render('search', {
+        result
+    });
+});
+
+//basic search
+// app.get("/search", async (req, res) => {
+//     const name = req.query.name;
+//     const result = await Developer.findOne({ name });
+
+//     res.render("search", { result });
+// });
+
+app.get('/developer/delete/:id', async (req, res) => {
+    await Developer.findByIdAndDelete(req.params.id);
+    res.redirect('/home');
+});
+
+// app.get('/movie/delete/:id', async (req, res) => {
+//     await Movie.findByIdAndDelete(req.params.id);
+//     res.redirect('/home');
+// });
+
+app.get('/logout', (req, res) => {
+    req.session.destroy();
+    res.redirect('/login');
+});
+
+app.listen(3000, () => console.log("Server started on port http://localhost:3000"));
+
+---------node crud operation with api-----
+
+// server.js
+
+// --- 1. Imports ---
+const express = require('express');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+require('dotenv').config(); // Load environment variables from .env
+
+// --- 2. Configuration ---
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET;
+const MONGO_URI = process.env.MONGO_URI;
+
+// Middleware to parse JSON request bodies
+app.use(express.json());
+
+// --- 3. Database Connection ---
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// --- 4. Mongoose Schemas and Models ---
+
+// Task Schema
+const taskSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String },
+  completed: { type: Boolean, default: false },
+  // Associate the task with a user (important for authorization)
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true } 
+}, { timestamps: true });
+
+const Task = mongoose.model('Task', taskSchema);
+
+// User Schema (for Authorization)
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true }
+});
+
+// Pre-save hook to hash the password before saving a new user
+userSchema.pre('save', async function(next) {
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+  next();
+});
+
+const User = mongoose.model('User', userSchema);
+
+
+// --- 5. Authorization Middleware ---
+
+/**
+ * Middleware to protect routes. 
+ * It verifies the JWT token in the Authorization header.
+ */
+const authenticateToken = (req, res, next) => {
+  // Get token from the 'Authorization: Bearer <token>' header
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (token == null) {
+    return res.status(401).json({ message: 'Access denied. No token provided.' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      // Token is invalid or expired
+      return res.status(403).json({ message: 'Invalid or expired token.' });
+    }
+    // Token is valid. Attach the decoded user payload to the request.
+    req.user = user; 
+    next();
+  });
+};
+
+
+// --- 6. Authentication Routes (Public) ---
+
+// **User Registration**
+app.post('/api/register', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = new User({ username, password });
+    await user.save();
+    res.status(201).json({ message: 'User registered successfully!' });
+  } catch (error) {
+    res.status(400).json({ message: 'Registration failed.', error: error.message });
+  }
+});
+
+// **User Login**
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials.' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials.' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user._id, username: user.username },
+      JWT_SECRET,
+      { expiresIn: '1h' } // Token expires in 1 hour
+    );
+
+    res.json({ token, username: user.username });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error during login.' });
+  }
+});
+
+
+// --- 7. Task CRUD Routes (Protected) ---
+
+// Apply the authorization middleware to all CRUD routes
+app.use('/api/tasks', authenticateToken); 
+
+// **C - Create Task**
+app.post('/api/tasks', async (req, res) => {
+  try {
+    const { title, description } = req.body;
+    const newTask = new Task({
+      title,
+      description,
+      owner: req.user.id // Use the user ID from the verified token
+    });
+    const savedTask = await newTask.save();
+    res.status(201).json(savedTask);
+  } catch (error) {
+    res.status(400).json({ message: 'Failed to create task.', error: error.message });
+  }
+});
+
+// **R - Read All Tasks (owned by user)**
+app.get('/api/tasks', async (req, res) => {
+  try {
+    // Only fetch tasks where the 'owner' matches the authenticated user's ID
+    const tasks = await Task.find({ owner: req.user.id }); 
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch tasks.', error: error.message });
+  }
+});
+
+// **R - Read Single Task**
+app.get('/api/tasks/:id', async (req, res) => {
+  try {
+    const task = await Task.findOne({ _id: req.params.id, owner: req.user.id });
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found or not owned by user.' });
+    }
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch task.', error: error.message });
+  }
+});
+
+// **U - Update Task**
+app.put('/api/tasks/:id', async (req, res) => {
+  try {
+    const { title, description, completed } = req.body;
+    
+    const updatedTask = await Task.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user.id }, // Find by ID AND Owner
+      { title, description, completed },
+      { new: true, runValidators: true } // Return the updated document and run schema validation
+    );
+
+    if (!updatedTask) {
+      return res.status(404).json({ message: 'Task not found or not owned by user.' });
+    }
+    res.json(updatedTask);
+  } catch (error) {
+    res.status(400).json({ message: 'Failed to update task.', error: error.message });
+  }
+});
+
+// **D - Delete Task**
+app.delete('/api/tasks/:id', async (req, res) => {
+  try {
+    const deletedTask = await Task.findOneAndDelete({ _id: req.params.id, owner: req.user.id }); // Find by ID AND Owner
+
+    if (!deletedTask) {
+      return res.status(404).json({ message: 'Task not found or not owned by user.' });
+    }
+    res.json({ message: 'Task deleted successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete task.', error: error.message });
+  }
+});
+
+
+// --- 8. Start Server ---
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
+
+
+------react-----
+
+
+import { useEffect,useState } from "react";
+import axios from "axios";
+
+function App() 
+{
+  const [data,setData]=useState(null);
+
+  useEffect(()=>{
+    fetch('http://localhost:3000/api/home',{credentials:'include'})
+    .then(res=>res.json())
+    .then(data=>{setData(data);}) 
+    },[]);
+
+    if(!data) return <h1>Loading...</h1>;
+
+    return (
+      <div>
+          <h1>Welcome, {data.name} from {data.city}!</h1>
+      <p>{data.email}</p>
+      <p>{data.dob}</p>
+      </div>
+    
+    );
+}
+
+export default App;
+
+-----react crud operation -----
+
+import React, { useState, useEffect } from 'react';
+
+// The base URL for the fake API we'll use for demonstration
+const API_BASE_URL = 'https://jsonplaceholder.typicode.com/posts';
+
+/**
+ * ## ⚛️ Complete CRUD Example Component
+ * A single component demonstrating Create, Read, Update, and Delete operations
+ * using the fetch API and functional React hooks.
+ */
+const CrudApp = () => {
+  // 1. STATE MANAGEMENT
+  // Stores the list of posts (READ operation data)
+  const [posts, setPosts] = useState([]);
+  // Stores the data for the new post being created or an existing post being updated
+  const [formData, setFormData] = useState({ title: '', body: '' });
+  // Stores the ID of the post currently being edited (null if none)
+  const [editingId, setEditingId] = useState(null);
+  // Stores any error messages
+  const [error, setError] = useState(null);
+  // Stores the loading state
+  const [loading, setLoading] = useState(false);
+
+  // --- READ: Fetch All Posts (useEffect) ---
+  const fetchPosts = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}?_limit=5`); // Limit to 5 for simplicity
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setPosts(data);
+    } catch (err) {
+      setError(`Failed to fetch posts: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Run only on the initial mount to fetch the data
+  useEffect(() => {
+    fetchPosts();
+  }, []); // The empty dependency array ensures this runs once
+
+  // --- HANDLERS for Forms and Inputs ---
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleEdit = (post) => {
+    setEditingId(post.id);
+    setFormData({ title: post.title, body: post.body });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setFormData({ title: '', body: '' });
+  };
+
+  // --- CREATE and UPDATE Handlers (API CALLS) ---
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const newPost = {
+      title: formData.title,
+      body: formData.body,
+      userId: 1, // Required by JSONPlaceholder
+    };
+
+    try {
+      if (editingId) {
+        // **UPDATE (PUT Request)**
+        const response = await fetch(`${API_BASE_URL}/${editingId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(newPost),
+        });
+
+        if (!response.ok) throw new Error(`Update failed: ${response.status}`);
+        
+        const updatedPost = await response.json();
+        // Update the post in the local state
+        setPosts(posts.map(p => p.id === editingId ? updatedPost : p));
+        setEditingId(null); // Exit editing mode
+        alert('Post updated successfully!');
+      } else {
+        // **CREATE (POST Request)**
+        const response = await fetch(API_BASE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(newPost),
+        });
+
+        if (!response.ok) throw new Error(`Creation failed: ${response.status}`);
+        
+        const createdPost = await response.json();
+        // Add the new post to the local state (usually API assigns a unique ID)
+        // Note: JSONPlaceholder often returns a fake ID like 101 for POST requests
+        setPosts([createdPost, ...posts]);
+        alert('Post created successfully!');
+      }
+      // Reset the form after operation
+      setFormData({ title: '', body: '' });
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- DELETE Handler (API CALL) ---
+  const handleDelete = async (id) => {
+    if (!window.confirm(`Are you sure you want to delete post ${id}?`)) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      // **DELETE (DELETE Request)**
+      const response = await fetch(`${API_BASE_URL}/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        // Even if the status is 200/204, we verify for real APIs.
+        // For JSONPlaceholder, a successful delete returns a 200, but the resource 
+        // isn't actually deleted on the server, which is fine for demonstration.
+        // throw new Error(`Deletion failed: ${response.status}`); 
+      }
+      
+      // Remove the post from the local state
+      setPosts(posts.filter(post => post.id !== id));
+      alert(`Post ${id} deleted successfully!`);
+
+    } catch (err) {
+      setError(`Failed to delete post: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- RENDER (JSX) ---
+  return (
+    <div style={{ maxWidth: '800px', margin: '0 auto', fontFamily: 'Arial' }}>
+      <h1>📝 React CRUD Operations</h1>
+      <p>Using <code>{API_BASE_URL}</code></p>
+      
+      {loading && <p style={{ color: 'blue' }}>Loading... Please wait.</p>}
+      {error && <p style={{ color: 'red', fontWeight: 'bold' }}>Error: {error}</p>}
+
+      <hr />
+
+      {/* ## Create / Update Form */}
+      <h2>{editingId ? `✏️ Edit Post ID: ${editingId}` : '➕ Create New Post'}</h2>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px', border: '1px solid #ccc', borderRadius: '5px' }}>
+        <input
+          type="text"
+          name="title"
+          placeholder="Post Title"
+          value={formData.title}
+          onChange={handleInputChange}
+          required
+          style={{ padding: '8px', border: '1px solid #ddd' }}
+        />
+        <textarea
+          name="body"
+          placeholder="Post Body"
+          value={formData.body}
+          onChange={handleInputChange}
+          required
+          style={{ padding: '8px', border: '1px solid #ddd' }}
+          rows="4"
+        />
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button type="submit" disabled={loading} style={{ padding: '10px', backgroundColor: editingId ? 'orange' : 'green', color: 'white', border: 'none', cursor: 'pointer' }}>
+            {editingId ? 'Save Changes (UPDATE)' : 'Create Post (CREATE)'}
+          </button>
+          {editingId && (
+            <button type="button" onClick={handleCancelEdit} style={{ padding: '10px', backgroundColor: 'gray', color: 'white', border: 'none', cursor: 'pointer' }}>
+              Cancel Edit
+            </button>
+          )}
+        </div>
+      </form>
+
+      <hr />
+
+      {/* ## Read: Posts List */}
+      <h2>📋 Posts List (READ)</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {posts.length === 0 && !loading && <p>No posts found. Try creating one!</p>}
+        {posts.map(post => (
+          <div 
+            key={post.id} 
+            style={{ 
+              border: '1px solid #eee', 
+              padding: '15px', 
+              borderRadius: '5px', 
+              boxShadow: '2px 2px 5px rgba(0,0,0,0.1)',
+              backgroundColor: post.id === editingId ? '#fff8e1' : 'white' // Highlight editing post
+            }}
+          >
+            <h3 style={{ margin: '0 0 5px 0' }}>{post.title} (ID: {post.id})</h3>
+            <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#555' }}>{post.body}</p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                onClick={() => handleEdit(post)}
+                disabled={loading}
+                style={{ padding: '8px', backgroundColor: '#007bff', color: 'white', border: 'none', cursor: 'pointer' }}
+              >
+                Edit (UPDATE)
+              </button>
+              <button 
+                onClick={() => handleDelete(post.id)}
+                disabled={loading}
+                style={{ padding: '8px', backgroundColor: '#dc3545', color: 'white', border: 'none', cursor: 'pointer' }}
+              >
+                Delete (DELETE)
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default CrudApp;
+
+// To run this app, place this content in a file named, for example, 'CrudApp.jsx'
+// and import it into your main 'App.js' or 'index.js' file.
+// Example:
+// import CrudApp from './CrudApp';
+// function App() { return <CrudApp />; }
+// export default App;
+
+
+---------home-ejs---------
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <h3>Welcome, <%= user.name %></h3>
+    <p>Your registered email is: <%= user.email %></p>
+    <p>DOB : <%= user.dob%></p>
+    <p>City : <%= user.city %></p>
+    <p>Degrees:</p>
+   <% user.degrees.forEach(d=>{ %>
+        <%= d.name%><br>
+  <%  }) %>
+  <p>Profile Picture :
+    <% user.image.forEach(img=>{ %>
+    <img src="/uploads/<%=img%>" width="150" height="150"></p>
+
+   <% })%>
+    <a href="/logout">Logout</a>
+</body>
+</html>
+
+
+----------login-ejs ----------
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <form action="/login" method="post">
+        Email : <input type="email" name="email" required><br><br>
+        Password : <input type="password" name="password" required><br><br>
+        <button type="submit">Login</button>
+</body>
+</html>
+
+
+
+-------------register-ejs---------
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <form action="/register" method="post" enctype="multipart/form-data">
+        Name : <input type="text" name="name" required><br><br>
+        Email : <input type="email" name="email" required><br><br>
+        Password : <input type="password" name="password" required><br><br>
+        DOB : <input type="date" name="dob" required><br><br>
+        City : <input type="text" name="city" required><br><br>
+        Profile Picture : <input type="file" name="image" required multiple><br><br>
+        Select Degrees : 
+        <select name="degrees">
+           <% degrees.forEach(d=>{ %>
+                <option value="<%=d.name%>"><%=d.name%></option>
+           <% }) %>
+        </select>
+       <!-- <% degrees.forEach(d=>{ %>
+            <input type="checkbox" name="degrees" value="<%=d.name%>"> <%=d.name%><br><br>
+      <%  }) %> -->
+        <button type="submit">Register</button>   
+    </form>
+</body>
+</html>
+
+------------search-ejs--------------
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <form action="/developer/search" method="get">
+        Search Developer Name : <input type="text" name="name" required><br><br>
+        <button type="submit">Search</button>
+    </form>
+
+<% result.forEach(dev => { %>
+    <p><%= dev.name %></p>
+<% }) %>
+
+</body>
+</html>
+
+
