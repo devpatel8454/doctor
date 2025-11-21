@@ -108,7 +108,7 @@ app.post('/patient/login', async (req, res) => {
     
     const match = await bcrypt.compare(req.body.password , patient.Password );
     if(!match) return res.render('patient_login',{error:"Invalid Password"});
-    console.log("Stored password:", patient.password);
+    console.log("Stored password:", patient.Password);
     console.log("Entered password:", req.body.password);
 
     req.session.patientId = patient._id;
