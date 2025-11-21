@@ -10,6 +10,7 @@ express-session
 cors
 ejs
 npm install nodemon --save-dev
+connect-mongo
 jsonwebtoken
 dotenv
 
@@ -46,7 +47,7 @@ const developerSchema = new mongoose.Schema({
     },
     
     email: {
-        type: String,
+        type: String,+
         required: [true, 'Email is required'],
         unique: true, // Ensures no two developers can have the same email
         lowercase: true, // Converts email to lowercase before saving
