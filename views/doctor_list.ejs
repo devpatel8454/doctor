@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <% doctors.forEach(d => { %>
+        <p>doctor name : <%= d.name %></p>
+        <p>doctor specialization  : <%= d.specialization %></p>
+        <p>doctor Email : <%= d.email %></p>
+        <p>doctor Experience : <%= d.Experience %></p>
+        <p>Fees <%=d.Fees%></p>
+        <p><img src="/uploads/<%= d.image %>" width="150" height="150" alt="doctor pic"></p>
+        <a href="/appointment/book/<%= d._id%>">Book Appointment</a>
+
+    <% }) %>
+</body>
+</html>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>add doctor</title>
+</head>
+<body>
+    <form action="/doctor/add" method="post" enctype="multipart/form-data">
+        Name : <input type="text" name="name" required><br><br>
+        Specialization : <input type="text" name="specialization" required><br><br>
+        Experience : <input type="number" name="experience" required><br><br>
+        Fees : <input type="text" name="fees" required><br><br>
+        Email : <input type="email" name="email" required><br><br>
+        Password : <input type="password" name="password" required><br><br>
+        File Upload : <input type="file" name="image" required><br><br>
+        <button type="submit">Add</button>
+    </form>
+</body>
+</html>
